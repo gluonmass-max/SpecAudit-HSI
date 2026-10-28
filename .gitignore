@@ -1,0 +1,29 @@
+# Python caches and build outputs
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ipynb_checkpoints/
+build/
+dist/
+*.egg-info/
+
+# Local environments and secrets
+.venv/
+venv/
+.env
+.env.*
+
+# Data, pretrained weights and experiment outputs
+HRSSD/
+*.pth
+*.pt
+*.ckpt
+runs/
+preds/
+results/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
