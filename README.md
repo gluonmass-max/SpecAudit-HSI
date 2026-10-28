@@ -1,5 +1,7 @@
 # SpecAudit-HSI
 
+This repository provides the **Two-Level Spectral Adaptation (TLSA)** salient-object detector and the **SpecAudit** spectral diagnostics accompanying the [Remote Sensing paper](https://doi.org/10.3390/rs18213694). TLSA uses Band Amplitude Calibration (BAC) with a frozen DOFA ViT-B backbone, LoRA and a decoder, followed by training-free Self-Guided Spectral Refinement (SGSR) at inference.
+
 SpecAudit is a set of diagnostics for hyperspectral imagery processed by wavelength-conditioned foundation models, i.e. models whose patch-embedding entry generates one kernel per band from that band's wavelength (DOFA-style entries). It asks where the spectral evidence in a hyperspectral cube goes on its way through such a model, and measures this at three levels:
 
 | Instrument          | Level          | Question                                                     | Needs                                                        |
@@ -14,7 +16,7 @@ None of the readings update any parameter of the analysed network. The Fisher di
 
 ### Spectral Ledger
 
-All readings use one regularised Fisher discriminant, `w = (S_w + εI)^{-1} (μ_fg − μ_bg)` with ε = 10⁻³, whose projection is passed through a logistic function to give a saliency map. The Ledger compares a C-band configuration with a 3-band reference arm on the same pixels (true colour by default; any three bands can be specified), and varies only the scope over which the discriminant is fitted:
+All readings use one regularised Fisher discriminant, `w = (S_w + εI)^{-1} (μ_fg − μ_bg)` with ε = 10⁻³, whose projection is passed through a logistic function to give a saliency map. The Ledger compares the full 32-band configuration with one of three predefined 3-band reference arms (`visible`, `random`, or `spread`; `visible` by default), and varies only the scope over which the discriminant is fitted:
 
 - **per-image, in-sample**: fitted and evaluated on the pixels of each test image;
 - **per-image, split-half**: fitted on one half of an image's pixels and evaluated on the other half, and vice versa;
@@ -22,7 +24,7 @@ All readings use one regularised Fisher discriminant, `w = (S_w + εI)^{-1} (μ_
 
 The difference between the per-image and global readings indicates how much of the additional evidence varies from image to image. Maps are scored with the S-measure of the official HRSSD evaluator and with rank-based AUC; differences are paired per image, with bootstrap confidence intervals.
 
-Reliability controls: spatial split-half (left/right and top/bottom), a fixed global direction with per-image calibration (to separate direction from threshold), calibration-free AUC, and sensitivity to ε. A multi-class version (shared within-class covariance, mIoU) applies the same three readings to semantic segmentation.
+Implemented reliability controls include spatial split-half (left/right and top/bottom), fixed global directions with either label-free or label-calibrated per-image calibration, rank-based AUC, and a configurable regularisation strength (`--eps`). The released script covers binary foreground/background saliency on HRSSD; multi-class semantic-segmentation diagnostics are not included.
 
 ### KernelScope
 
@@ -34,7 +36,7 @@ For an entry that computes `tokens = Σ_b K_b ∗ x_b`, the C generated kernels 
 | Effective rank r_eff | `exp(−Σ p_i log p_i)`, with `p_i = σ_i / Σ σ` over the singular values of K |         1         |              C              |
 | Collapse ratio χ     | `C ‖K̄‖² / ‖K‖_F²`, with K̄ the mean kernel                    |         1         |             1/C             |
 
-The readings depend only on the frozen weights and the wavelengths, so any sensor can be analysed from its band table. Included: a table of multispectral and hyperspectral sensors, a band-density sweep over a fixed spectral range, arbitrary band subsets of one sensor, and an i.i.d. Gaussian reference of the same shape.
+The current script evaluates the predefined band configurations in `tlsa/bands.py` using either the entry wavelengths (`--table entry`, default) or nominal image wavelengths (`--table image`), and prints an i.i.d. Gaussian reference of matching shape. A general sensor catalogue and automated band-density sweep are not part of this release.
 
 ### DepthProbe
 
@@ -54,50 +56,97 @@ Two modes are provided: the **frozen** pretrained backbone, and a **task-adapted
 - KernelScope describes the entry only and does not know which bands matter for a task. Kernel geometry is not a monotonic predictor of accuracy, and r_eff is an entropy index of the singular-value spectrum, not a count of preserved physical dimensions.
 - DepthProbe measures the linear readability of PCA-reduced tokens and has no independent ground truth. Readings directly after the entry depend on the PCA truncation.
 
-## Planned repository layout
+## Repository layout
 
-```
+```text
 SpecAudit-HSI/
+├── train.py                     # train TLSA (BAC + LoRA + decoder)
+├── infer.py                     # coarse maps and SGSR-refined maps
+├── tlsa/
+│   ├── model.py                 # TLSANet, spectral gating and decoder
+│   ├── dofa_backbone.py         # DOFA ViT-B and LoRA integration
+│   ├── wave_dynamic_layer.py    # DOFA wavelength-conditioned entry
+│   ├── sgsr.py                  # training-free spectral refinement
+│   ├── bands.py                 # wavelength tables and band subsets
+│   └── data.py, losses.py, metrics.py
 ├── specaudit/
-│   ├── ledger/
-│   │   ├── readings.py        # in-sample / split-half / global readings, C bands vs a 3-band reference arm
-│   │   ├── checks.py          # reliability controls
-│   │   └── segmentation.py    # multi-class readings for semantic segmentation
-│   ├── kernelscope/
-│   │   ├── sensors.py         # sensor table, band-density sweep, Gaussian reference
-│   │   └── subsets.py         # band subsets of one sensor
-│   └── depthprobe/
-│       ├── frozen.py          # frozen pretrained backbone
-│       └── adapted.py         # task-adapted backbone (DOFA ViT-B + LoRA)
-├── third_party/               # DOFA entry and HRSSD loader/evaluator, with their licenses
+│   ├── ledger.py                # input-level spectral evidence
+│   ├── kernelscope.py           # entry-kernel geometry
+│   └── depthprobe.py            # depth-wise linear readability
+├── eval/
+│   ├── main.py                  # HRSSD evaluator entry point
+│   └── evaluator.py, dataloader.py
+├── third_party_licenses/
 ├── requirements.txt
 ├── LICENSE
 └── README.md
 ```
 
-Each script writes its readings as a Markdown table and a CSV file.
+## Setup
 
-## Requirements
+Python 3.9 and the dependencies in `requirements.txt` were used for this release (including PyTorch 2.8.0 and NumPy 2.0.2). Install GDAL separately through conda. Training and inference call CUDA directly; KernelScope is CPU-only, while Ledger and DepthProbe can run without a GPU subject to available resources.
 
-Tested with Python 3.9, PyTorch 2.8.0 + CUDA 12.8, NumPy 2.0.2, SciPy 1.13.1, pandas, tifffile and GDAL (`conda install -c conda-forge gdal`). KernelScope runs on a CPU. The Spectral Ledger (through the S-measure evaluator) and DepthProbe expect a CUDA GPU.
+```bash
+conda create -n tlsa python=3.9 -y
+conda activate tlsa
+conda install -c conda-forge gdal
+pip install -r requirements.txt
+```
+
+## TLSA training, inference and evaluation
+
+Train one seed (the paper uses seeds 7, 1, 2, 3 and 4):
+
+```bash
+python train.py --data_root HRSSD --dofa_ckpt DOFA_ViT_base_e100.pth --save_dir runs/tlsa_s7 --seed 7
+```
+
+The training script uses 100 epochs, batch size 16, NAdam with initial learning rate `3e-3`, cosine annealing, and BCE + IoU loss. A fixed 49-image validation subset is drawn from the official training split; the best checkpoint is written as `runs/tlsa_s7/model-best-val`.
+
+Generate coarse and SGSR-refined saliency maps on the HRSSD test split:
+
+```bash
+python infer.py --data_root HRSSD --dofa_ckpt DOFA_ViT_base_e100.pth --ckpt runs/tlsa_s7/model-best-val --out_dir preds/tlsa_s7
+```
+
+The outputs are `preds/tlsa_s7/coarse/*.jpg` and `preds/tlsa_s7/tlsa/*.png`. Evaluate the refined maps using the included HRSSD evaluator:
+
+```bash
+python eval/main.py --method TLSA --root_dir preds/tlsa_s7/tlsa --gt_dir HRSSD/ts/label
+```
+
+## Run SpecAudit
+
+```bash
+python specaudit/ledger.py --data_root HRSSD --out results/ledger
+python specaudit/kernelscope.py --dofa_ckpt DOFA_ViT_base_e100.pth
+python specaudit/depthprobe.py --data_root HRSSD --dofa_ckpt DOFA_ViT_base_e100.pth --out results/depthprobe
+```
+
+- `ledger.py` saves per-image readings to CSV and a paired-difference summary to Markdown (`--ref visible|random|spread`, default `visible`).
+- `kernelscope.py` prints its configuration table to standard output (`--table image` selects nominal HRSSD band centres).
+- `depthprobe.py` saves depth-wise AUC differences and bootstrap intervals to CSV; its default mode is frozen DOFA. The optional adapted mode requires **both** compatible 32-band and 3-band TLSA checkpoints (`--ckpt_32b` and `--ckpt_3b`).
+
+## Wavelength tables
+
+`tlsa/bands.py` defines `ENTRY_WAVELENGTHS_NM` (the default supplied to the DOFA entry in the reported experiments) and `IMAGE_BAND_CENTRES_NM` (nominal HRSSD image-band centres). Keep the default entry table to reproduce the paper; KernelScope can compare the alternate table with `--table image`.
 
 ## Data and pretrained weights
 
-Datasets and weights are not redistributed. Obtain them from their original sources:
+Datasets and pretrained weights are not redistributed. Obtain them from their original sources:
 
-| Resource           | Source                                 | Notes                                                        |
-| ------------------ | -------------------------------------- | ------------------------------------------------------------ |
-| HRSSD              | https://github.com/laprf/HRSSD         | Official split `tr` / `ts`, 512 × 512 × 32 GeoTIFF; label value −1 marks pixels excluded from evaluation |
-| WHU-OHS            | https://doi.org/10.5281/zenodo.7258035 | The segmentation readings use the official validation split (513 patches), re-split with a fixed seed |
-| DOFA ViT-B weights | https://huggingface.co/earthflow/DOFA  | File `DOFA_ViT_base_e100.pth`, sha256 `4720985e42b918ac0307009eb06121a3435d9bbce6fd95446f84824a538165b1`. Later DOFA weights use a different entry implementation |
+| Resource | Source | Notes |
+|---|---|---|
+| HRSSD | https://github.com/laprf/HRSSD | Expected `HRSSD/{tr,ts}/{image,label,mask}/`: 32-band `.tif` images, `.tif` labels and `.png` masks. Label value `-1` denotes ignored pixels. |
+| DOFA ViT-B weights | https://huggingface.co/earthflow/DOFA | Use `DOFA_ViT_base_e100.pth` (SHA-256: `4720985e42b918ac0307009eb06121a3435d9bbce6fd95446f84824a538165b1`). |
 
 ## Not included
 
-Datasets, pretrained weights, trained checkpoints, experiment result files, and code for other published methods.
+Datasets, pretrained weights, trained checkpoints, experiment result files, multi-class WHU-OHS diagnostic scripts, and code for other published methods.
 
 ## License
 
-The code is released under the MIT License (see `LICENSE`). Files in `third_party/` keep their original licenses:
+The code is released under the MIT License (see `LICENSE`). Third-party components are acknowledged in `third_party_licenses/` (including `tlsa/wave_dynamic_layer.py` and HRSSD-derived loading/evaluation code):
 
 | Component                                   | Source                           | License |
 | ------------------------------------------- | -------------------------------- | ------- |
