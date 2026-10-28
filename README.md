@@ -108,4 +108,20 @@ The DOFA pretrained weights are distributed by their authors under CC-BY-4.0.
 
 ## Citation
 
-Citation information will be added after the paper is published.
+If you use TLSA or SpecAudit-HSI in your research, please cite the following paper:
+
+Wang, S.; Tao, Y.; Cai, C.; Xu, H.; Zhang, Y.; Hong, Y. Two-Level Spectral Adaptation and Multilevel Spectral Evidence Diagnostics for Hyperspectral Remote Sensing Salient Object Detection with a Wavelength-Conditioned Foundation Model. *Remote Sensing* **2026**, *18*(21), 3694. https://doi.org/10.3390/rs18213694
+
+```bibtex
+@article{wang2026tlsa,
+  author  = {Wang, Shentao and Tao, Ye and Cai, Chengkai and Xu, Haotian and Zhang, Yuanzhi and Hong, Yue},
+  title   = {{Two-Level Spectral Adaptation and Multilevel Spectral Evidence Diagnostics for Hyperspectral Remote Sensing Salient Object Detection with a Wavelength-Conditioned Foundation Model}},
+  journal = {Remote Sensing},
+  year    = {2026},
+  volume  = {18},
+  number  = {21},
+  pages   = {3694},
+  doi     = {10.3390/rs18213694},
+  url     = {https://doi.org/10.3390/rs18213694}
+}
+```
