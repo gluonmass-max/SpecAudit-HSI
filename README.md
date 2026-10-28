@@ -1,8 +1,5 @@
 # SpecAudit-HSI
 
-> [!IMPORTANT]
-
-
 SpecAudit is a set of diagnostics for hyperspectral imagery processed by wavelength-conditioned foundation models, i.e. models whose patch-embedding entry generates one kernel per band from that band's wavelength (DOFA-style entries). It asks where the spectral evidence in a hyperspectral cube goes on its way through such a model, and measures this at three levels:
 
 | Instrument          | Level          | Question                                                     | Needs                                                        |
